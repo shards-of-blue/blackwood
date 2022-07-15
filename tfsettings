@@ -1,0 +1,10 @@
+## The Immutable ID is used to identify this particular deployment environment
+## in other supporting system. For instance, as part of the terraform
+## backend storage key.
+export INFRA_IMMUTABLE_ID=85d675b4b34c38e5
+export INFRA_DEPLOY_ID='0'
+
+## You may set terraform input variables here.
+## For input variables that differ by deployment tier, use "<tier>.tfvars" files
+export TF_VAR_example="your parameter here"
+

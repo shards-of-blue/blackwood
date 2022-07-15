@@ -1,0 +1,85 @@
+#
+## Terraform pipeline deployments
+#
+#image: atlassian/default-image:3
+image: hashicorp/terraform:latest
+
+#
+## pipeline step to fetch addtional repos as submodules. Uses workspace
+## variables to retrieve credentials.
+#
+_pullsubmodules: &PULLSUBMODULES
+  image: atlassian/default-image:3
+  name: Repo pull
+  script:
+    - export IT_LFS_SKIP_SMUDGE=1
+    - export AZLIB_BRANCH='release-v1'
+    - export TOKEN=$(curl -v -X POST -u "${PL_OAUTH_CLIENT_ID}:${PL_OAUTH_CLIENT_SECRET}" -d 'grant_type=client_credentials' "https://bitbucket.org/site/oauth2/access_token" | jq -r '.access_token')
+    #- git submodule deinit lib conf
+    #- git submodule init lib conf
+    #- git config submodule.azure-library.url https://x-token-auth:${TOKEN}@bitbucket.org/shades-of-blue/azure-library.git
+    #- git config submodule.azure-library.url https://x-token-auth:${TOKEN}@bitbucket.org/shades-of-blue/azure-global-configuration.git conf
+    #- git submodule update
+
+    - git submodule add -b "${AZLIB_BRANCH}" https://x-token-auth:${TOKEN}@bitbucket.org/shades-of-blue/azure-library.git lib
+    - git submodule add https://x-token-auth:${TOKEN}@bitbucket.org/shades-of-blue/azure-global-configuration.git conf
+  artifacts:
+    - 'lib/**'
+    - 'conf/**'
+ 
+pipelines:
+  pull-requests:
+    - step:
+        oidc: true
+        name: Build
+        deployment: test
+        script:
+          - sh lib/tf/build.sh -env test
+
+  branches:
+    ## master branch: approved but unreleased features
+    deployment: test
+    master:
+      - step: *PULLSUBMODULES
+      - step:
+          oidc: true
+          name: Build plan
+          script:
+            - sh lib/tf/build.sh -env test
+          artifacts:
+            - 'infra/plan*'
+      - step:
+          oidc: true
+          name: Deploy to Azure
+          trigger: 'manual'
+          script:
+            - sh lib/tf/deploy.sh -env test
+      - step:
+          oidc: true
+          name: Cleanup Azure
+          trigger: 'manual'
+          script:
+            - sh lib/tf/decom.sh -env test
+
+    ## release branches: live deployments and decommisionings
+    release*:
+      - step:
+          oidc: true
+          name: Build plan
+          script:
+            - sh lib/tf/build.sh -env production
+          artifacts:
+            - 'infra/plan*'
+      - step:
+          oidc: true
+          name: Deploy to Azure
+          trigger: 'manual'
+          script:
+            - sh lib/tf/deploy.sh -env production
+      - step:
+          oidc: true
+          name: Cleanup Azure
+          trigger: 'manual'
+          script:
+            - sh lib/tf/decom.sh -env production
+
